@@ -15,7 +15,9 @@ import {
 } from "@langfuse/shared";
 import {
   type ingestionApiSchema,
+  convertTraceUpsertEventsToRedisEvents,
   eventTypes,
+  getTraceUpsertQueue,
   ingestionEvent,
 } from "@langfuse/shared/src/server";
 import { type ApiAccessScope } from "@/src/features/public-api/server/types";
@@ -126,6 +128,17 @@ export default async function handler(
     await telemetry();
 
     const sortedBatch = sortBatch(filteredBatch);
+
+    if (env.LANGFUSE_ASYNC_INGESTION_PROCESSING === "true") {
+      // this function MUST NOT return but send the HTTP response directly
+      console.log("Returning http response early");
+      handleBatchResult(
+        validationErrors, // we are not sending additional server errors to the client in case of early return
+        sortedBatch.map((event) => ({ id: event.id, result: event })),
+        res,
+      );
+    }
+
     const result = await handleBatch(
       sortedBatch,
       parsedSchema.data.metadata,
@@ -139,11 +152,14 @@ export default async function handler(
       authCheck.scope.projectId,
     );
 
-    handleBatchResult(
-      [...validationErrors, ...result.errors],
-      result.results,
-      res,
-    );
+    //  in case we did not return early, we return the result here
+    if (env.LANGFUSE_ASYNC_INGESTION_PROCESSING === "false") {
+      handleBatchResult(
+        [...validationErrors, ...result.errors],
+        result.results,
+        res,
+      );
+    }
   } catch (error: unknown) {
     if (!(error instanceof UnauthorizedError)) {
       console.error("error_handling_ingestion_event", error);
@@ -267,7 +283,7 @@ export const handleBatch = async (
 
 async function retry<T>(request: () => Promise<T>): Promise<T> {
   return await backOff(request, {
-    numOfAttempts: 3,
+    numOfAttempts: env.LANGFUSE_ASYNC_INGESTION_PROCESSING === "true" ? 5 : 3,
     retry: (e: Error, attemptNumber: number) => {
       if (e instanceof UnauthorizedError || e instanceof ForbiddenError) {
         console.log("not retrying auth error");
@@ -541,7 +557,17 @@ export const sendToWorkerIfEnvironmentConfigured = async (
     .filter(isNotNullOrUndefined);
 
   try {
-    if (
+    if (env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION && redis) {
+      console.log(`Sending ${traceEvents.length} events to worker via Redis`);
+
+      const queue = getTraceUpsertQueue();
+      if (!queue) {
+        console.error("TraceUpsertQueue not initialized");
+        return;
+      }
+
+      await queue.addBulk(convertTraceUpsertEventsToRedisEvents(traceEvents));
+    } else if (
       env.LANGFUSE_WORKER_HOST &&
       env.LANGFUSE_WORKER_PASSWORD &&
       env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION
