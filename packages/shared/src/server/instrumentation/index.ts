@@ -3,52 +3,84 @@ import * as dd from "dd-trace";
 
 // type CallbackFn<T> = () => T;
 
+export type TCarrier = {
+  traceparent?: string;
+  tracestate?: string;
+};
+
 export type SpanCtx = {
   name: string;
   spanKind?: opentelemetry.SpanKind; // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md#spankind
   rootSpan?: boolean; // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/overview.md#traces
   traceScope?: string;
+  traceContext?: TCarrier;
 };
 
-type CallbackFn<T> = () => T | Promise<T>;
+type AsyncCallbackFn<T> = (span: opentelemetry.Span) => Promise<T>;
 
-export function instrument<T>(
+export async function instrumentAsync<T>(
   ctx: SpanCtx,
-  callback: CallbackFn<T>
-): T extends Promise<any> ? Promise<T> : T {
+  callback: AsyncCallbackFn<T>,
+): Promise<T> {
+  const activeContext = ctx.traceContext
+    ? opentelemetry.propagation.extract(
+        opentelemetry.context.active(),
+        ctx.traceContext,
+      )
+    : opentelemetry.context.active();
+
   return getTracer(ctx.traceScope ?? callback.name).startActiveSpan(
     ctx.name,
     {
-      root: ctx.rootSpan,
+      root: !Boolean(ctx.traceContext) && ctx.rootSpan,
       kind: ctx.spanKind,
     },
-    (span) => {
-      const handleResult = (result: T) => {
+    activeContext,
+    async (span) => {
+      try {
+        const result = await callback(span);
         span.end();
         return result;
-      };
-
-      const handleError = (ex: unknown) => {
+      } catch (ex) {
         traceException(ex as opentelemetry.Exception, span);
         span.end();
         throw ex;
-      };
-
-      try {
-        const result = callback();
-        if (result instanceof Promise) {
-          return result
-            .then(handleResult)
-            .catch(handleError) as T extends Promise<any> ? Promise<T> : T;
-        } else {
-          return handleResult(result) as T extends Promise<any>
-            ? Promise<T>
-            : T;
-        }
-      } catch (ex) {
-        return handleError(ex) as T extends Promise<any> ? Promise<T> : T;
       }
-    }
+    },
+  );
+}
+
+type SyncCallbackFn<T> = (span: opentelemetry.Span) => T;
+
+export function instrumentSync<T>(
+  ctx: SpanCtx,
+  callback: SyncCallbackFn<T>,
+): T {
+  const activeContext = ctx.traceContext
+    ? opentelemetry.propagation.extract(
+        opentelemetry.context.active(),
+        ctx.traceContext,
+      )
+    : opentelemetry.context.active();
+
+  return getTracer(ctx.traceScope ?? callback.name).startActiveSpan(
+    ctx.name,
+    {
+      root: !Boolean(ctx.traceContext) && ctx.rootSpan,
+      kind: ctx.spanKind,
+    },
+    activeContext,
+    (span) => {
+      try {
+        const result = callback(span);
+        span.end();
+        return result;
+      } catch (ex) {
+        traceException(ex as opentelemetry.Exception, span);
+        span.end();
+        throw ex;
+      }
+    },
   );
 }
 
@@ -57,7 +89,7 @@ export const getCurrentSpan = () => opentelemetry.trace.getActiveSpan();
 export const traceException = (
   ex: unknown,
   span?: opentelemetry.Span,
-  code?: string
+  code?: string,
 ) => {
   const activeSpan = span ?? getCurrentSpan();
 
@@ -67,9 +99,24 @@ export const traceException = (
 
   const exception = {
     code: code,
-    message: ex instanceof Error ? ex.message : String(ex),
-    name: ex instanceof Error ? ex.name : "Error",
-    stack: ex instanceof Error ? ex.stack : undefined,
+    message:
+      ex instanceof Error
+        ? ex.message
+        : typeof ex === "object" && ex !== null && "message" in ex
+          ? JSON.stringify(ex.message)
+          : JSON.stringify(ex),
+    name:
+      ex instanceof Error
+        ? ex.name
+        : typeof ex === "object" && ex !== null && "name" in ex
+          ? JSON.stringify(ex.name)
+          : "Error",
+    stack:
+      ex instanceof Error
+        ? JSON.stringify(ex.stack)
+        : typeof ex === "object" && ex !== null && "stack" in ex
+          ? JSON.stringify(ex.stack)
+          : undefined,
   };
 
   // adds an otel event
@@ -90,7 +137,7 @@ export const traceException = (
 
 export const addUserToSpan = (
   attributes: { userId?: string; projectId?: string; email?: string },
-  span?: opentelemetry.Span
+  span?: opentelemetry.Span,
 ) => {
   const activeSpan = span ?? getCurrentSpan();
 
@@ -113,7 +160,7 @@ export const recordGauge = (
     | {
         [tag: string]: string | number;
       }
-    | undefined
+    | undefined,
 ) => {
   dd.dogstatsd.gauge(stat, value, tags);
 };
@@ -121,7 +168,7 @@ export const recordGauge = (
 export const recordIncrement = (
   stat: string,
   value?: number | undefined,
-  tags?: { [tag: string]: string | number } | undefined
+  tags?: { [tag: string]: string | number } | undefined,
 ) => {
   dd.dogstatsd.increment(stat, value, tags);
 };
@@ -129,7 +176,19 @@ export const recordIncrement = (
 export const recordHistogram = (
   stat: string,
   value?: number | undefined,
-  tags?: { [tag: string]: string | number } | undefined
+  tags?: { [tag: string]: string | number } | undefined,
 ) => {
   dd.dogstatsd.histogram(stat, value, tags);
+};
+
+/**
+ * Converts a queue name to the matching datadog metric name.
+ * Consumer only needs to append the relevant suffix.
+ *
+ * Example: `legacy-ingestion-queue` -> `langfuse.queue.legacy_ingestion`
+ */
+export const convertQueueNameToMetricName = (queueName: string): string => {
+  return (
+    "langfuse.queue." + queueName.replace(/-/g, "_").replace(/_queue$/, "")
+  );
 };

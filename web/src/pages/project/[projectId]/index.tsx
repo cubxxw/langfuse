@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import { GenerationLatencyChart } from "@/src/features/dashboard/components/LatencyChart";
 import { ChartScores } from "@/src/features/dashboard/components/ChartScores";
 import { TracesBarListChart } from "@/src/features/dashboard/components/TracesBarListChart";
-import { MetricTable } from "@/src/features/dashboard/components/MetricTable";
+import { ModelCostTable } from "@/src/features/dashboard/components/ModelCostTable";
 import { ScoresTable } from "@/src/features/dashboard/components/ScoresTable";
 import { ModelUsageChart } from "@/src/features/dashboard/components/ModelUsageChart";
 import { TracesTimeSeriesChart } from "@/src/features/dashboard/components/TracesTimeSeriesChart";
@@ -92,6 +92,7 @@ export default function Dashboard() {
   const [userFilterState, setUserFilterState] = useQueryFilterState(
     [],
     "dashboard",
+    projectId,
   );
 
   const agg = useMemo(
@@ -138,7 +139,7 @@ export default function Dashboard() {
     <div className="md:container">
       <Header title="Dashboard" actionButtons={<SetupTracingButton />} />
       <div className="my-3 flex flex-wrap items-center justify-between gap-2">
-        <div className=" flex flex-col gap-2 lg:flex-row">
+        <div className="flex flex-col gap-2 lg:flex-row">
           <DatePickerWithRange
             dateRange={dateRange}
             setDateRangeAndOption={useDebounce(setDateRangeAndOption)}
@@ -174,14 +175,14 @@ export default function Dashboard() {
           </FeedbackButtonWrapper>
         )}
       </div>
-      <div className="grid w-full grid-cols-1 gap-4 overflow-hidden lg:grid-cols-2 xl:grid-cols-6">
+      <div className="grid w-full grid-cols-1 gap-3 overflow-hidden lg:grid-cols-2 xl:grid-cols-6">
         <TracesBarListChart
           className="col-span-1 xl:col-span-2"
           projectId={projectId}
           globalFilterState={mergedFilterState}
         />
         {!disableExpensiveDashboardComponents && (
-          <MetricTable
+          <ModelCostTable
             className="col-span-1 xl:col-span-2"
             projectId={projectId}
             globalFilterState={mergedFilterState}
@@ -200,7 +201,7 @@ export default function Dashboard() {
         />
         {!disableExpensiveDashboardComponents && (
           <ModelUsageChart
-            className="col-span-1  min-h-24 xl:col-span-3"
+            className="col-span-1 min-h-24 xl:col-span-3"
             projectId={projectId}
             globalFilterState={mergedFilterState}
             agg={agg}

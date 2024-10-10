@@ -8,8 +8,8 @@ import {
 } from "@langfuse/shared/src/server";
 
 import { env } from "../../env";
-import logger from "../../logger";
-import { instrument } from "@langfuse/shared/src/server";
+import { logger } from "@langfuse/shared/src/server";
+import { instrumentAsync } from "@langfuse/shared/src/server";
 import { SpanKind } from "@opentelemetry/api";
 
 export class ClickhouseWriter {
@@ -48,7 +48,7 @@ export class ClickhouseWriter {
 
   private start() {
     logger.info(
-      `Starting ClickhouseWriter. Max interval: ${this.writeInterval} ms, Max batch size: ${this.batchSize}`
+      `Starting ClickhouseWriter. Max interval: ${this.writeInterval} ms, Max batch size: ${this.batchSize}`,
     );
 
     this.intervalId = setInterval(() => {
@@ -78,7 +78,7 @@ export class ClickhouseWriter {
   }
 
   private async flushAll(fullQueue = false) {
-    return instrument(
+    return instrumentAsync(
       {
         name: "write-to-clickhouse",
         spanKind: SpanKind.CONSUMER,
@@ -91,7 +91,7 @@ export class ClickhouseWriter {
         ]).catch((err) => {
           logger.error("ClickhouseWriter.flushAll", err);
         });
-      }
+      },
     );
   }
 
@@ -101,13 +101,13 @@ export class ClickhouseWriter {
 
     const queueItems = entityQueue.splice(
       0,
-      fullQueue ? entityQueue.length : this.batchSize
+      fullQueue ? entityQueue.length : this.batchSize,
     );
 
     // Log wait time
     queueItems.forEach((item) => {
       const waitTime = Date.now() - item.createdAt;
-      recordHistogram("ingestion_clickhouse_insert_wait_time", waitTime, {
+      recordHistogram("langfuse.queue.clickhouse_writer.wait_time", waitTime, {
         unit: "milliseconds",
       });
     });
@@ -122,15 +122,15 @@ export class ClickhouseWriter {
 
       // Log processing time
       recordHistogram(
-        "ingestion_clickhouse_insert_processing_time",
+        "langfuse.queue.clickhouse_writer.processing_time",
         Date.now() - processingStartTime,
         {
           unit: "milliseconds",
-        }
+        },
       );
 
       logger.debug(
-        `Flushed ${queueItems.length} records to Clickhouse ${tableName}. New queue length: ${entityQueue.length}`
+        `Flushed ${queueItems.length} records to Clickhouse ${tableName}. New queue length: ${entityQueue.length}`,
       );
 
       recordGauge(
@@ -139,7 +139,7 @@ export class ClickhouseWriter {
         {
           unit: "records",
           entityType: tableName,
-        }
+        },
       );
     } catch (err) {
       logger.error(`ClickhouseWriter.flush ${tableName}`, err);
@@ -154,7 +154,7 @@ export class ClickhouseWriter {
         } else {
           // TODO - Add to a dead letter queue in Redis rather than dropping
           logger.error(
-            `Max attempts reached for ${tableName} record. Dropping record ${item.data}.`
+            `Max attempts reached for ${tableName} record. Dropping record ${item.data}.`,
           );
         }
       });
@@ -163,7 +163,7 @@ export class ClickhouseWriter {
 
   public addToQueue<T extends TableName>(
     tableName: T,
-    data: RecordInsertType<T>
+    data: RecordInsertType<T>,
   ) {
     const entityQueue = this.queue[tableName];
     entityQueue.push({
@@ -200,7 +200,7 @@ export class ClickhouseWriter {
       });
 
     logger.debug(
-      `ClickhouseWriter.writeToClickhouse: ${Date.now() - startTime} ms`
+      `ClickhouseWriter.writeToClickhouse: ${Date.now() - startTime} ms`,
     );
 
     recordGauge("ingestion_clickhouse_insert", params.records.length);

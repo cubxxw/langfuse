@@ -24,6 +24,7 @@ export function AnnotateDrawer({
   variant = "button",
   type = "trace",
   source = "TraceDetail",
+  hasGroupedButton = false,
 }: {
   traceId: string;
   scores: APIScore[];
@@ -34,6 +35,7 @@ export function AnnotateDrawer({
   variant?: "button" | "badge";
   type?: "trace" | "observation" | "session";
   source?: "TraceDetail" | "SessionDetail";
+  hasGroupedButton?: boolean;
 }) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const capture = usePostHogClientCapture();
@@ -62,6 +64,7 @@ export function AnnotateDrawer({
           <Button
             variant="secondary"
             disabled={!hasAccess}
+            className={hasGroupedButton ? "rounded-r-none" : ""}
             onClick={() => {
               setIsDrawerOpen(true);
               capture(
@@ -76,9 +79,9 @@ export function AnnotateDrawer({
             }}
           >
             {!hasAccess ? (
-              <LockIcon className="mr-2 h-3 w-3" />
+              <LockIcon className="mr-1.5 h-3 w-3" />
             ) : (
-              <SquarePen className="mr-2 h-5 w-5" />
+              <SquarePen className="mr-1.5 h-4 w-4" />
             )}
             <span>Annotate</span>
           </Button>

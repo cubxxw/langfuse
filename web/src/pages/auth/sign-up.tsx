@@ -48,11 +48,14 @@ export default function SignIn({ authProviders }: PageProps) {
   async function onSubmit(values: z.infer<typeof signupSchema>) {
     try {
       setFormError(null);
-      const res = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-      });
+      const res = await fetch(
+        `${env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/auth/signup`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(values),
+        },
+      );
 
       if (!res.ok) {
         const payload = (await res.json()) as { message: string };
@@ -66,8 +69,8 @@ export default function SignIn({ authProviders }: PageProps) {
         callbackUrl:
           env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION &&
           env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION !== "DEV"
-            ? "/onboarding"
-            : "/",
+            ? `${env.NEXT_PUBLIC_BASE_PATH ?? ""}/onboarding`
+            : `${env.NEXT_PUBLIC_BASE_PATH ?? ""}/`,
         turnstileToken,
       });
     } catch (err) {
@@ -104,7 +107,7 @@ export default function SignIn({ authProviders }: PageProps) {
           </div>
         ) : null}
 
-        <div className="mt-14 bg-background px-6 py-10 shadow sm:mx-auto sm:w-full sm:max-w-[480px] sm:rounded-lg sm:px-12">
+        <div className="mt-14 bg-background px-6 py-10 shadow sm:mx-auto sm:w-full sm:max-w-[480px] sm:rounded-lg sm:px-10">
           <CloudRegionSwitch isSignUpPage />
           <Form {...form}>
             <form

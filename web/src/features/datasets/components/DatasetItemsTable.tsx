@@ -23,6 +23,7 @@ import useColumnVisibility from "@/src/features/column-visibility/hooks/useColum
 import { useRowHeightLocalStorage } from "@/src/components/table/data-table-row-height-switch";
 import { IOTableCell } from "@/src/components/ui/CodeJsonViewer";
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
+import useColumnOrder from "@/src/features/column-visibility/hooks/useColumnOrder";
 
 type RowData = {
   id: string;
@@ -86,6 +87,7 @@ export function DatasetItemsTable({
       header: "Item id",
       id: "id",
       size: 90,
+      isPinned: true,
       cell: ({ row }) => {
         const id: string = row.getValue("id");
         return (
@@ -110,13 +112,13 @@ export function DatasetItemsTable({
         if (!source) return null;
         return source.observationId ? (
           <TableLink
-            path={`/project/${projectId}/traces/${source.traceId}?observation=${source.observationId}`}
+            path={`/project/${projectId}/traces/${encodeURIComponent(source.traceId)}?observation=${encodeURIComponent(source.observationId)}`}
             value={source.observationId}
             icon={<ListTree className="h-4 w-4" />}
           />
         ) : (
           <TableLink
-            path={`/project/${projectId}/traces/${source.traceId}`}
+            path={`/project/${projectId}/traces/${encodeURIComponent(source.traceId)}`}
             value={source.traceId}
             icon={<ListTree className="h-4 w-4" />}
           />
@@ -268,12 +270,19 @@ export function DatasetItemsTable({
     columns,
   );
 
+  const [columnOrder, setColumnOrder] = useColumnOrder<RowData>(
+    "datasetItemsColumnOrder",
+    columns,
+  );
+
   return (
     <>
       <DataTableToolbar
         columns={columns}
         columnVisibility={columnVisibility}
         setColumnVisibility={setColumnVisibility}
+        columnOrder={columnOrder}
+        setColumnOrder={setColumnOrder}
         rowHeight={rowHeight}
         setRowHeight={setRowHeight}
         actionButtons={menuItems}
@@ -298,14 +307,14 @@ export function DatasetItemsTable({
                 }
         }
         pagination={{
-          pageCount: Math.ceil(
-            (items.data?.totalDatasetItems ?? 0) / paginationState.pageSize,
-          ),
+          totalCount: items.data?.totalDatasetItems ?? null,
           onChange: setPaginationState,
           state: paginationState,
         }}
         columnVisibility={columnVisibility}
         onColumnVisibilityChange={setColumnVisibility}
+        columnOrder={columnOrder}
+        onColumnOrderChange={setColumnOrder}
         rowHeight={rowHeight}
       />
     </>

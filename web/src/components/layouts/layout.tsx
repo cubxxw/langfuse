@@ -33,27 +33,40 @@ import { EnvLabel } from "@/src/components/EnvLabel";
 import { useQueryProjectOrOrganization } from "@/src/features/projects/hooks";
 import { useOrgEntitlements } from "@/src/features/entitlements/hooks";
 import { useUiCustomization } from "@/src/ee/features/ui-customization/useUiCustomization";
+import { hasOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
+import { ClickhouseAdminToggle } from "@/src/components/layouts/ClickhouseAdminToggle";
 
 const signOutUser = async () => {
   localStorage.clear();
   sessionStorage.clear();
 
-  await signOut({
-    callbackUrl: "/auth/sign-in",
-  });
+  await signOut();
 };
 
-const userNavigation = [
-  {
-    name: "Theme",
-    onClick: () => {},
-    content: <ThemeToggle />,
-  },
-  {
-    name: "Sign out",
-    onClick: signOutUser,
-  },
-];
+const getUserNavigation = (isAdmin: boolean) => {
+  const navigationItems = [
+    {
+      name: "Theme",
+      onClick: () => {},
+      content: <ThemeToggle />,
+    },
+    {
+      name: "Sign out",
+      onClick: signOutUser,
+    },
+  ];
+
+  return isAdmin
+    ? [
+        {
+          name: "CH Query",
+          onClick: () => {},
+          content: <ClickhouseAdminToggle />,
+        },
+        ...navigationItems,
+      ]
+    : navigationItems;
+};
 
 const pathsWithoutNavigation: string[] = [
   "/onboarding",
@@ -118,6 +131,10 @@ export default function Layout(props: PropsWithChildren) {
 
   const uiCustomization = useUiCustomization();
 
+  const cloudAdmin =
+    env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION !== undefined &&
+    session.data?.user?.admin === true;
+
   // project info based on projectId in the URL
   const { project, organization } = useQueryProjectOrOrganization();
 
@@ -134,7 +151,7 @@ export default function Layout(props: PropsWithChildren) {
     if (
       route.featureFlag !== undefined &&
       !enableExperimentalFeatures &&
-      session.data?.user?.admin !== true &&
+      !cloudAdmin &&
       session.data?.user?.featureFlags[route.featureFlag] !== true
     )
       return null;
@@ -143,14 +160,14 @@ export default function Layout(props: PropsWithChildren) {
     if (
       route.entitlement !== undefined &&
       !entitlements.includes(route.entitlement) &&
-      session.data?.user?.admin !== true
+      !cloudAdmin
     )
       return null;
 
     // RBAC
     if (
       route.projectRbacScope !== undefined &&
-      session.data?.user?.admin !== true &&
+      !cloudAdmin &&
       (!project ||
         !organization ||
         !hasProjectAccess({
@@ -160,6 +177,21 @@ export default function Layout(props: PropsWithChildren) {
         }))
     )
       return null;
+    if (
+      route.organizationRbacScope !== undefined &&
+      !cloudAdmin &&
+      (!organization ||
+        !hasOrganizationAccess({
+          organizationId: organization.id,
+          scope: route.organizationRbacScope,
+          session: session.data,
+        }))
+    )
+      return null;
+
+    // check show function
+    if (route.show && !route.show({ organization: organization ?? undefined }))
+      return null;
 
     // apply to children as well
     const children: (NavigationItem | null)[] =
@@ -168,7 +200,7 @@ export default function Layout(props: PropsWithChildren) {
 
     const href = (
       route.customizableHref
-        ? uiCustomization?.[route.customizableHref] ?? route.pathname
+        ? (uiCustomization?.[route.customizableHref] ?? route.pathname)
         : route.pathname
     )
       ?.replace("[projectId]", routerProjectId ?? "")
@@ -234,13 +266,20 @@ export default function Layout(props: PropsWithChildren) {
     session.status === "authenticated" &&
     unauthenticatedPaths.includes(router.pathname)
   ) {
-    const targetPath = router.query.targetPath as string | undefined;
+    const queryTargetPath = router.query.targetPath as string | undefined;
 
-    const sanitizedTargetPath = targetPath
-      ? DOMPurify.sanitize(targetPath)
+    const sanitizedTargetPath = queryTargetPath
+      ? DOMPurify.sanitize(queryTargetPath)
       : undefined;
 
-    void router.replace(sanitizedTargetPath ?? "/");
+    // only allow relative links
+    const targetPath =
+      sanitizedTargetPath?.startsWith("/") &&
+      !sanitizedTargetPath.startsWith("//")
+        ? sanitizedTargetPath
+        : "/";
+
+    void router.replace(targetPath);
     return <Spinner message="Redirecting" />;
   }
 
@@ -263,19 +302,19 @@ export default function Layout(props: PropsWithChildren) {
         <link
           rel="apple-touch-icon"
           sizes="180x180"
-          href="/apple-touch-icon.png"
+          href={`${env.NEXT_PUBLIC_BASE_PATH ?? ""}/apple-touch-icon.png`}
         />
         <link
           rel="icon"
           type="image/png"
           sizes="32x32"
-          href="/favicon-32x32.png"
+          href={`${env.NEXT_PUBLIC_BASE_PATH ?? ""}/favicon-32x32.png`}
         />
         <link
           rel="icon"
           type="image/png"
           sizes="16x16"
-          href="/favicon-16x16.png"
+          href={`${env.NEXT_PUBLIC_BASE_PATH ?? ""}/favicon-16x16.png`}
         />
       </Head>
       <div>
@@ -346,7 +385,7 @@ export default function Layout(props: PropsWithChildren) {
         </Transition.Root>
 
         {/* Static sidebar for desktop */}
-        <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-56 lg:flex-col">
+        <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-52 lg:flex-col">
           {/* Sidebar component, swap this element with another sidebar if you like */}
           <div className="flex h-screen grow flex-col border-r border-border bg-background">
             <nav className="flex h-full flex-1 flex-col overflow-y-auto px-4 py-3">
@@ -416,14 +455,14 @@ export default function Layout(props: PropsWithChildren) {
                 leaveFrom="transform opacity-100 scale-100"
                 leaveTo="transform opacity-0 scale-95"
               >
-                <Menu.Items className="absolute -top-full bottom-1 right-0 z-10 overflow-hidden rounded-md bg-background py-2 shadow-lg ring-1 ring-border focus:outline-none">
+                <Menu.Items className="absolute bottom-1 right-0 z-10 overflow-hidden rounded-md bg-background py-2 shadow-lg ring-1 ring-border focus:outline-none">
                   <span
-                    className="block max-w-56 overflow-hidden truncate border-b px-3 pb-2 text-sm leading-6 text-muted-foreground"
+                    className="block max-w-52 overflow-hidden truncate border-b px-3 pb-2 text-sm leading-6 text-muted-foreground"
                     title={session.data?.user?.email ?? undefined}
                   >
                     {session.data?.user?.email}
                   </span>
-                  {userNavigation.map((item) => (
+                  {getUserNavigation(cloudAdmin).map((item) => (
                     <Menu.Item key={item.name}>
                       {({ active }) => (
                         <a
@@ -486,12 +525,12 @@ export default function Layout(props: PropsWithChildren) {
             >
               <Menu.Items className="absolute right-0 z-10 mt-2.5 rounded-md bg-background py-2 pb-1 shadow-lg ring-1 ring-border focus:outline-none">
                 <span
-                  className="mb-1 block max-w-56 overflow-hidden truncate border-b px-3 pb-2 text-sm leading-6 text-muted-foreground"
+                  className="mb-1 block max-w-52 overflow-hidden truncate border-b px-3 pb-2 text-sm leading-6 text-muted-foreground"
                   title={session.data?.user?.email ?? undefined}
                 >
                   {session.data?.user?.email}
                 </span>
-                {userNavigation.map((item) => (
+                {getUserNavigation(cloudAdmin).map((item) => (
                   <Menu.Item key={item.name}>
                     {({ active }) => (
                       <a
@@ -511,12 +550,12 @@ export default function Layout(props: PropsWithChildren) {
             </Transition>
           </Menu>
         </div>
-        <div className="lg:pl-56">
+        <div className="lg:pl-52">
           {env.NEXT_PUBLIC_DEMO_ORG_ID &&
           env.NEXT_PUBLIC_DEMO_PROJECT_ID &&
           routerProjectId === env.NEXT_PUBLIC_DEMO_PROJECT_ID &&
           Boolean(env.NEXT_PUBLIC_LANGFUSE_CLOUD_REGION) ? (
-            <div className="flex w-full items-center border-b border-dark-yellow  bg-light-yellow px-4 py-2 lg:sticky lg:top-0 lg:z-40">
+            <div className="flex w-full items-center border-b border-dark-yellow bg-light-yellow px-4 py-2 lg:sticky lg:top-0 lg:z-40">
               <div className="flex flex-1 flex-wrap gap-1">
                 <div className="flex items-center gap-1">
                   <Info className="h-4 w-4" />
@@ -532,7 +571,7 @@ export default function Layout(props: PropsWithChildren) {
               </Button>
             </div>
           ) : null}
-          <main className="p-4">{props.children}</main>
+          <main className="p-3">{props.children}</main>
           <Toaster visibleToasts={1} />
         </div>
       </div>
@@ -559,6 +598,8 @@ const MainNavigation: React.FC<{
     {},
   );
 
+  const uiCustomization = useUiCustomization();
+
   return (
     <li className={className}>
       <ul role="list" className="-mx-2 space-y-1">
@@ -576,34 +617,44 @@ const MainNavigation: React.FC<{
                 onClick={onNavitemClick}
                 target={item.newTab ? "_blank" : undefined}
               >
-                {item.icon && (
-                  <item.icon
-                    className={clsx(
-                      item.current
-                        ? "text-primary-accent"
-                        : "text-muted-foreground group-hover:text-primary-accent",
-                      "h-5 w-5 shrink-0",
+                {item.pathname === "/" &&
+                uiCustomization?.logoLightModeHref &&
+                uiCustomization?.logoDarkModeHref ? (
+                  // override the default logo with the uiCustomization logo if the pathname is "/"
+                  <LangfuseLogo size="sm" version />
+                ) : (
+                  // default node for all other routes
+                  <>
+                    {item.icon && (
+                      <item.icon
+                        className={clsx(
+                          item.current
+                            ? "text-primary-accent"
+                            : "text-muted-foreground group-hover:text-primary-accent",
+                          "h-5 w-5 shrink-0",
+                        )}
+                        aria-hidden="true"
+                      />
                     )}
-                    aria-hidden="true"
-                  />
+                    {item.name}
+                    {item.label &&
+                      (typeof item.label === "string" ? (
+                        <span
+                          className={cn(
+                            "-my-0.5 self-center whitespace-nowrap break-keep rounded-sm border px-1 py-0.5 text-xs",
+                            item.current
+                              ? "border-primary-accent text-primary-accent"
+                              : "border-border text-muted-foreground group-hover:border-primary-accent group-hover:text-primary-accent",
+                          )}
+                        >
+                          {item.label}
+                        </span>
+                      ) : (
+                        // ReactNode
+                        item.label
+                      ))}
+                  </>
                 )}
-                {item.name}
-                {item.label &&
-                  (typeof item.label === "string" ? (
-                    <span
-                      className={cn(
-                        "-my-0.5 self-center whitespace-nowrap break-keep rounded-sm border px-1 py-0.5 text-xs",
-                        item.current
-                          ? "border-primary-accent text-primary-accent"
-                          : "border-border text-muted-foreground group-hover:border-primary-accent group-hover:text-primary-accent",
-                      )}
-                    >
-                      {item.label}
-                    </span>
-                  ) : (
-                    // ReactNode
-                    item.label
-                  ))}
               </Link>
             ) : item.children && item.children.length > 0 ? (
               <Disclosure
@@ -634,7 +685,7 @@ const MainNavigation: React.FC<{
                       {item.label && (
                         <span
                           className={cn(
-                            "-my-0.5 self-center whitespace-nowrap break-keep rounded-sm border px-1 py-0.5 text-xs",
+                            "-my-0.5 self-center whitespace-nowrap break-keep rounded-sm border px-1 text-xs",
                             item.current
                               ? "border-primary-accent text-primary-accent"
                               : "border-border text-muted-foreground group-hover:border-primary-accent group-hover:text-primary-accent",
@@ -648,7 +699,7 @@ const MainNavigation: React.FC<{
                           open
                             ? "rotate-90 text-muted-foreground"
                             : "text-muted-foreground",
-                          "ml-auto h-5 w-5 shrink-0",
+                          "ml-auto h-4 w-4 shrink-0",
                         )}
                         aria-hidden="true"
                       />
@@ -663,7 +714,7 @@ const MainNavigation: React.FC<{
                               subItem.current
                                 ? "bg-primary-foreground text-primary-accent"
                                 : "text-primary hover:bg-primary-foreground hover:text-primary-accent",
-                              "ml-0.5 flex w-full items-center gap-x-3 rounded-md p-1.5 pl-7 pr-2 text-sm",
+                              "ml-0.5 flex w-full items-center gap-x-3 rounded-md p-1 pl-7 pr-2 text-sm",
                             )}
                             target={subItem.newTab ? "_blank" : undefined}
                           >

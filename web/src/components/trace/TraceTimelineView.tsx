@@ -1,6 +1,6 @@
 import { Card } from "@/src/components/ui/card";
 import { type ObservationReturnType } from "@/src/server/api/routers/traces";
-import { type APIScore, type Trace } from "@langfuse/shared";
+import { isPresent, type APIScore, type Trace } from "@langfuse/shared";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SimpleTreeView } from "@mui/x-tree-view/SimpleTreeView";
@@ -30,6 +30,7 @@ import { TracePreview } from "@/src/components/trace/TracePreview";
 import { ObservationPreview } from "@/src/components/trace/ObservationPreview";
 import useSessionStorage from "@/src/components/useSessionStorage";
 import { api } from "@/src/utils/api";
+import { useSession } from "next-auth/react";
 
 // Fixed widths for styling for v1
 const SCALE_WIDTH = 800;
@@ -40,19 +41,18 @@ const MIN_LABEL_WIDTH = 250;
 const TREE_INDENTATION = 12; // default in MUI X TreeView
 
 const PREDEFINED_STEP_SIZES = [
-  0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9, 10,
+  0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25,
+  35, 40, 45, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500,
 ];
 
 const getNestedObservationKeys = (
   observations: NestedObservation[],
-): { keys: string[]; ids: string[] } => {
+): string[] => {
   const keys: string[] = [];
-  const ids: string[] = [];
 
   const collectKeys = (obs: NestedObservation[]) => {
     obs.forEach((observation) => {
       keys.push(`observation-${observation.id}`);
-      ids.push(observation.id);
       if (observation.children) {
         collectKeys(observation.children);
       }
@@ -60,7 +60,7 @@ const getNestedObservationKeys = (
   };
 
   collectKeys(observations);
-  return { keys, ids };
+  return keys;
 };
 
 const calculateStepSize = (latency: number, scaleWidth: number) => {
@@ -82,7 +82,7 @@ function TreeItemInner({
   level = 0,
   cardWidth,
 }: {
-  latency: number;
+  latency?: number;
   totalScaleSpan: number;
   type: TreeItemType;
   startOffset?: number;
@@ -92,12 +92,12 @@ function TreeItemInner({
   level?: number;
   cardWidth: number;
 }) {
-  const itemWidth = (latency / totalScaleSpan) * SCALE_WIDTH;
+  const itemWidth = ((latency ?? 0) / totalScaleSpan) * SCALE_WIDTH;
   const itemOffsetLabelWidth = itemWidth + startOffset + LABEL_WIDTH;
   const customLabelWidth = cardWidth - SCALE_WIDTH - CARD_PADDING;
 
   return (
-    <div className="group my-1 grid w-full min-w-fit grid-cols-[1fr,auto] items-center">
+    <div className="group my-0.5 grid w-full min-w-fit grid-cols-[1fr,auto] items-center">
       <div
         className="flex flex-row items-center gap-2"
         style={{
@@ -106,7 +106,10 @@ function TreeItemInner({
         }}
       >
         <span
-          className={cn("rounded-sm p-1 text-xs", treeItemColors.get(type))}
+          className={cn(
+            "rounded-sm px-1 py-0.5 text-xs",
+            treeItemColors.get(type),
+          )}
         >
           {type}
         </span>
@@ -161,12 +164,12 @@ function TreeItemInner({
                 "hidden justify-end text-xs text-muted-foreground group-hover:block",
                 itemOffsetLabelWidth > SCALE_WIDTH
                   ? "mr-1"
-                  : !!latency
-                    ? "-mr-9"
+                  : isPresent(latency)
+                    ? `-mr-9`
                     : "-mr-6",
               )}
             >
-              {!!latency ? `${latency.toFixed(2)}s` : "n/a"}
+              {isPresent(latency) ? `${latency.toFixed(2)}s` : "n/a"}
             </span>
           </div>
         </div>
@@ -201,7 +204,7 @@ function TraceTreeItem({
 
   const latency = endTime
     ? (endTime.getTime() - startTime.getTime()) / 1000
-    : 0;
+    : undefined;
   const startOffset =
     ((startTime.getTime() - traceStartTime.getTime()) / totalScaleSpan / 1000) *
     SCALE_WIDTH;
@@ -305,15 +308,16 @@ export function TraceTimelineView({
     () => nestObservations(observations),
     [observations],
   );
-  const { keys: nestedObservationKeys, ids: nestedObservationIds } = useMemo(
+  const nestedObservationKeys = useMemo(
     () => getNestedObservationKeys(nestedObservations),
     [nestedObservations],
   );
 
-  const observationCommentCounts = api.comments.getCountsByObjectIds.useQuery(
+  const session = useSession();
+
+  const observationCommentCounts = api.comments.getCountByObjectType.useQuery(
     {
       projectId: trace.projectId,
-      objectIds: nestedObservationIds,
       objectType: "OBSERVATION",
     },
     {
@@ -323,13 +327,14 @@ export function TraceTimelineView({
         },
       },
       refetchOnMount: false, // prevents refetching loops
+      enabled: session.status === "authenticated",
     },
   );
 
-  const traceCommentCounts = api.comments.getCountsByObjectIds.useQuery(
+  const traceCommentCounts = api.comments.getCountByObjectId.useQuery(
     {
       projectId: trace.projectId,
-      objectIds: [trace.id],
+      objectId: trace.id,
       objectType: "TRACE",
     },
     {
@@ -339,6 +344,7 @@ export function TraceTimelineView({
         },
       },
       refetchOnMount: false, // prevents refetching loops
+      enabled: session.status === "authenticated",
     },
   );
 
@@ -348,9 +354,9 @@ export function TraceTimelineView({
   const totalScaleSpan = stepSize * (SCALE_WIDTH / STEP_SIZE);
 
   return (
-    <div ref={parentRef} className="w-full">
+    <div ref={parentRef} className="h-full w-full">
       <Card
-        className="flex max-h-[calc(100dvh-24rem)] flex-col overflow-x-auto overflow-y-hidden"
+        className="flex max-h-full flex-col overflow-x-auto overflow-y-hidden"
         style={{ width: cardWidth }}
       >
         <div className="grid w-full grid-cols-[1fr,auto] items-center p-2">
@@ -360,7 +366,7 @@ export function TraceTimelineView({
               minWidth: `${MIN_LABEL_WIDTH}px`,
             }}
           >
-            <h3 className="text-2xl font-semibold tracking-tight">
+            <h3 className="text-xl font-semibold tracking-tight">
               Trace Timeline
             </h3>
             <div className="flex h-full items-center">
@@ -401,7 +407,7 @@ export function TraceTimelineView({
                     className="absolute -right-2 text-xs text-muted-foreground"
                     key={index}
                   >
-                    {step.toFixed(2)}s
+                    {step.toFixed(latency.toString().length >= 8 ? 0 : 2)}s
                   </span>
                 ) : (
                   <div

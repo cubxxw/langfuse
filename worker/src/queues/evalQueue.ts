@@ -1,124 +1,162 @@
-import { Job, Queue, Worker } from "bullmq";
+import { Job, Queue } from "bullmq";
 import { ApiError, BaseError } from "@langfuse/shared";
 import { evaluate, createEvalJobs } from "../features/evaluation/eval-service";
 import { kyselyPrisma } from "@langfuse/shared/src/db";
-import logger from "../logger";
 import { sql } from "kysely";
 import {
-  redis,
+  createNewRedisInstance,
   QueueName,
   TQueueJobTypes,
+  logger,
   traceException,
-  instrument,
+  recordIncrement,
+  recordHistogram,
+  recordGauge,
+  getTraceUpsertQueue,
 } from "@langfuse/shared/src/server";
-import { SpanKind } from "@opentelemetry/api";
 
-export const evalQueue = redis
-  ? new Queue<TQueueJobTypes[QueueName.EvaluationExecution]>(
-      QueueName.EvaluationExecution,
+let evalQueue: Queue<TQueueJobTypes[QueueName.EvaluationExecution]> | null =
+  null;
+
+export const getEvalQueue = () => {
+  if (evalQueue) return evalQueue;
+
+  const connection = createNewRedisInstance();
+
+  evalQueue = connection
+    ? new Queue<TQueueJobTypes[QueueName.EvaluationExecution]>(
+        QueueName.EvaluationExecution,
+        {
+          connection: connection,
+        }
+      )
+    : null;
+
+  return evalQueue;
+};
+
+export const evalJobCreatorQueueProcessor = async (
+  job: Job<TQueueJobTypes[QueueName.TraceUpsert]>
+) => {
+  try {
+    const startTime = Date.now();
+
+    const waitTime = Date.now() - job.timestamp;
+    recordIncrement("langfuse.queue.trace_upsert.request");
+    recordHistogram("langfuse.queue.trace_upsert.wait_time", waitTime, {
+      unit: "milliseconds",
+    });
+
+    await createEvalJobs({ event: job.data.payload });
+
+    await getTraceUpsertQueue()
+      ?.count()
+      .then((count) => {
+        logger.debug(`Eval creation queue length: ${count}`);
+        recordGauge("trace_upsert_queue_length", count, {
+          unit: "records",
+        });
+        return count;
+      })
+      .catch();
+    recordHistogram(
+      "langfuse.queue.trace_upsert.processing_time",
+      Date.now() - startTime,
+      { unit: "milliseconds" }
+    );
+    return true;
+  } catch (e) {
+    logger.error(
+      `Failed job Evaluation for traceId ${job.data.payload.traceId}`,
+      e
+    );
+    traceException(e);
+    throw e;
+  }
+};
+
+export const evalJobExecutorQueueProcessor = async (
+  job: Job<TQueueJobTypes[QueueName.EvaluationExecution]>
+) => {
+  try {
+    logger.info("Executing Evaluation Execution Job", job.data);
+    const startTime = Date.now();
+
+    // reduce the delay from the time to get the actual wait time
+    // from the point where the job was ready to be processed
+    // reduce the delay by expo backoff: 2 ^ (attempts - 1) * delay, delay: 1000ms
+    const estimatedBackoffTime =
+      job.attemptsMade > 0 ? 1000 * Math.pow(2, job.attemptsMade - 1) : 0;
+
+    const normalisedWaitTime =
+      Date.now() -
+      job.timestamp -
+      (job.data.payload.delay ?? 0) -
+      estimatedBackoffTime;
+
+    recordIncrement("langfuse.queue.evaluation_execution.request");
+    recordHistogram(
+      "langfuse.queue.evaluation_execution.wait_time",
+      normalisedWaitTime,
       {
-        connection: redis,
-        defaultJobOptions: {
-          removeOnComplete: true, // Important: If not true, new jobs for that ID would be ignored as jobs in the complete set are still considered as part of the queue
-          removeOnFail: 1000,
-        },
+        unit: "milliseconds",
       }
-    )
-  : null;
+    );
 
-export const evalJobCreator = redis
-  ? new Worker<TQueueJobTypes[QueueName.TraceUpsert]>(
-      QueueName.TraceUpsert,
-      async (job: Job<TQueueJobTypes[QueueName.TraceUpsert]>) => {
-        return instrument(
-          {
-            name: "evalJobCreator",
-            rootSpan: true,
-            spanKind: SpanKind.CONSUMER,
-          },
-          async () => {
-            try {
-              await createEvalJobs({ event: job.data.payload });
-              return true;
-            } catch (e) {
-              logger.error(
-                e,
-                `Failed job Evaluation for traceId ${job.data.payload.traceId} ${e}`
-              );
-              traceException(e);
-              throw e;
-            }
-          }
-        );
-      },
-      {
-        connection: redis,
-        concurrency: 20,
-        limiter: {
-          // execute 75 calls in 1000ms
-          max: 75,
-          duration: 1000,
-        },
-      }
-    )
-  : null;
+    await evaluate({ event: job.data.payload });
 
-export const evalJobExecutor = redis
-  ? new Worker<TQueueJobTypes[QueueName.EvaluationExecution]>(
-      QueueName.EvaluationExecution,
-      async (job: Job<TQueueJobTypes[QueueName.EvaluationExecution]>) => {
-        return instrument(
-          {
-            name: "evalJobExecutor",
-            spanKind: SpanKind.CONSUMER,
-          },
-          async () => {
-            try {
-              logger.info("Executing Evaluation Execution Job", job.data);
-              await evaluate({ event: job.data.payload });
-              return true;
-            } catch (e) {
-              const displayError =
-                e instanceof BaseError
-                  ? e.message
-                  : "An internal error occurred";
+    await getEvalQueue()
+      ?.count()
+      .then((count) => {
+        logger.debug(`Eval execution queue length: ${count}`);
+        recordGauge("langfuse.queue.evaluation_execution.length", count, {
+          unit: "records",
+        });
+        return count;
+      })
+      .catch();
+    recordHistogram(
+      "langfuse.queue.evaluation_execution.processing_time",
+      Date.now() - startTime,
+      { unit: "milliseconds" }
+    );
 
-              await kyselyPrisma.$kysely
-                .updateTable("job_executions")
-                .set("status", sql`'ERROR'::"JobExecutionStatus"`)
-                .set("end_time", new Date())
-                .set("error", displayError)
-                .where("id", "=", job.data.payload.jobExecutionId)
-                .where("project_id", "=", job.data.payload.projectId)
-                .execute();
+    return true;
+  } catch (e) {
+    const displayError =
+      e instanceof BaseError ? e.message : "An internal error occurred";
 
-              // do not log expected errors (api failures + missing api keys not provided by the user)
-              if (
-                !(e instanceof ApiError) &&
-                !(
-                  e instanceof BaseError &&
-                  e.message.includes("API key for provider")
-                )
-              ) {
-                logger.error(
-                  e,
-                  `Failed Evaluation_Execution job for id ${job.data.payload.jobExecutionId} ${e}`
-                );
-              }
-              traceException(e);
-              throw e;
-            }
-          }
-        );
-      },
-      {
-        connection: redis,
-        concurrency: 10,
-        limiter: {
-          // execute 20 llm calls in 5 seconds
-          max: 20,
-          duration: 5_000,
-        },
-      }
-    )
-  : null;
+    await kyselyPrisma.$kysely
+      .updateTable("job_executions")
+      .set("status", sql`'ERROR'::"JobExecutionStatus"`)
+      .set("end_time", new Date())
+      .set("error", displayError)
+      .where("id", "=", job.data.payload.jobExecutionId)
+      .where("project_id", "=", job.data.payload.projectId)
+      .execute();
+
+    // do not log expected errors (api failures + missing api keys not provided by the user)
+    if (
+      !(e instanceof BaseError && e.message.includes("API key for provider")) &&
+      !(
+        e instanceof BaseError &&
+        e.message.includes(
+          "Please ensure the mapped data exists and consider extending the job delay."
+        )
+      )
+    ) {
+      traceException(e);
+      logger.error(
+        `Failed Evaluation_Execution job for id ${job.data.payload.jobExecutionId}`,
+        e
+      );
+    }
+
+    // for missing API keys, we do not want to retry.
+    if (e instanceof BaseError && e.message.includes("API key for provider")) {
+      return;
+    }
+
+    throw e;
+  }
+};

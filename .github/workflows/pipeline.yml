@@ -16,11 +16,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v3
         with:
           version: 9.5.0
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "pnpm"
@@ -35,23 +35,19 @@ jobs:
         run: pnpm run lint
 
   test-docker-build:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set NEXT_PUBLIC_BUILD_ID
+        run: echo "NEXT_PUBLIC_BUILD_ID=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Build and run both images from compose
         run: |
           docker compose -f docker-compose.build.yml up -d
           sleep 5 # Wait for PostgreSQL to accept connections
-
-      - name: Check server health
-        run: |
-          timeout 10 bash -c 'until curl -f http://localhost:3000/api/public/health; do sleep 2; done'
-
-      - name: Check worker health
-        run: |
-          timeout 10 bash -c 'until curl -f http://localhost:3030/api/health; do sleep 2; done'
 
       - name: Ensure no unhealthy status
         run: |
@@ -61,6 +57,14 @@ jobs:
           else
             echo "All services are healthy"
           fi
+
+      - name: Check worker health
+        run: |
+          timeout 10 bash -c 'until curl -f http://localhost:3030/api/health; do sleep 2; done'
+
+      - name: Check server health
+        run: |
+          timeout 10 bash -c 'until curl -f http://localhost:3000/api/public/health; do sleep 2; done'
 
   tests-web:
     timeout-minutes: 20
@@ -76,12 +80,12 @@ jobs:
         with:
           swap-size-gb: 10
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v3
         with:
           version: 9.5.0
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: "pnpm"
@@ -94,7 +98,7 @@ jobs:
       - name: Load default env
         run: |
           cp .env.dev.example .env
-          grep -v -e '^REDIS_HOST=' .env.dev.example > .env
+          grep -v -e '^S3_BUCKET_NAME=' -e '^REDIS_HOST=' -e '^NEXT_PUBLIC_LANGFUSE_RUN_NEXT_INIT=' .env.dev.example > .env
 
       - name: Run + migrate
         run: |
@@ -107,13 +111,22 @@ jobs:
       - name: Seed DB
         run: |
           pnpm run db:migrate
-          pnpm run db:seed
 
       - name: Build
         run: pnpm run build
 
       - name: Start Langfuse
         run: (pnpm run start&)
+        env:
+          LANGFUSE_INIT_ORG_ID: "seed-org-id"
+          LANGFUSE_INIT_ORG_NAME: "Seed Org"
+          LANGFUSE_INIT_PROJECT_ID: "7a88fb47-b4e2-43b8-a06c-a5ce950dc53a"
+          LANGFUSE_INIT_PROJECT_NAME: "Seed Project"
+          LANGFUSE_INIT_PROJECT_PUBLIC_KEY: "pk-lf-1234567890"
+          LANGFUSE_INIT_PROJECT_SECRET_KEY: "sk-lf-1234567890"
+          LANGFUSE_INIT_USER_EMAIL: "demo@langfuse.com"
+          LANGFUSE_INIT_USER_NAME: "Demo User"
+          LANGFUSE_INIT_USER_PASSWORD: "password"
 
       - name: run tests
         run: pnpm --filter=web run test
@@ -132,12 +145,13 @@ jobs:
         with:
           swap-size-gb: 10
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v3
         with:
           version: 9.5.0
+
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: "pnpm"
@@ -165,26 +179,34 @@ jobs:
           sleep 5 # Wait for PostgreSQL to accept connections
           docker compose ps
 
+      - name: Ensure no unhealthy status
+        run: |
+          if docker compose ps | grep "(unhealthy)"; then
+            echo "One or more services are unhealthy"
+            exit 1
+          else
+            echo "All services are healthy"
+          fi
+
       - name: Seed DB
         run: |
-          pnpm run --filter=shared ch:up
           pnpm run db:migrate
           pnpm run db:seed
+          pnpm run --filter=shared ch:up
 
       - name: Build
         run: pnpm --filter=worker... run build
 
       - name: run tests
         run: pnpm --filter=worker run test
-
   e2e-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v3
         with:
           version: 9.5.0
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "pnpm"
@@ -222,11 +244,11 @@ jobs:
   e2e-server-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v3
         with:
           version: 9.5.0
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "pnpm"
@@ -300,13 +322,16 @@ jobs:
         with:
           version: 9.5.0
       - name: Setup node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache-dependency-path: "pnpm-lock.yaml"
 
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set NEXT_PUBLIC_BUILD_ID
+        run: echo "NEXT_PUBLIC_BUILD_ID=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Log in to the GitHub Container registry
         uses: docker/login-action@v2

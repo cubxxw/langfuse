@@ -1,6 +1,12 @@
 import { useRouter } from "next/router";
 import { useEffect } from "react";
-import { NumberParam, useQueryParams, withDefault } from "use-query-params";
+import {
+  NumberParam,
+  StringParam,
+  useQueryParam,
+  useQueryParams,
+  withDefault,
+} from "use-query-params";
 import { DataTableToolbar } from "@/src/components/table/data-table-toolbar";
 
 import { GroupedScoreBadges } from "@/src/components/grouped-score-badge";
@@ -41,6 +47,7 @@ export default function UsersPage() {
   const [userFilterState, setUserFilterState] = useQueryFilterState(
     [],
     "users",
+    projectId,
   );
 
   const { setDetailPageList } = useDetailPageLists();
@@ -51,7 +58,7 @@ export default function UsersPage() {
   });
 
   const { selectedOption, dateRange, setDateRangeAndOption } =
-    useTableDateRange();
+    useTableDateRange(projectId);
 
   const dateRangeFilter: FilterState = dateRange
     ? [
@@ -65,11 +72,18 @@ export default function UsersPage() {
     : [];
 
   const filterState = userFilterState.concat(dateRangeFilter);
+
+  const [searchQuery, setSearchQuery] = useQueryParam(
+    "search",
+    withDefault(StringParam, null),
+  );
+
   const users = api.users.all.useQuery({
     filter: filterState,
     page: paginationState.pageIndex,
     limit: paginationState.pageSize,
     projectId,
+    searchQuery: searchQuery ?? undefined,
   });
 
   // this API call will return an empty array if there are no users.
@@ -106,7 +120,9 @@ export default function UsersPage() {
     })),
   );
 
-  const totalCount = users.data?.totalUsers ?? 0;
+  const totalCount = users.data?.totalUsers
+    ? Number(users.data.totalUsers)
+    : null;
 
   useEffect(() => {
     if (users.isSuccess) {
@@ -223,8 +239,8 @@ export default function UsersPage() {
                 <TableLink
                   path={
                     value.observationId
-                      ? `/project/${projectId}/traces/${value.traceId}?observation=${value.observationId}`
-                      : `/project/${projectId}/traces/${value.traceId}`
+                      ? `/project/${projectId}/traces/${encodeURIComponent(value.traceId)}?observation=${encodeURIComponent(value.observationId)}`
+                      : `/project/${projectId}/traces/${encodeURIComponent(value.traceId)}`
                   }
                   value={value.traceId}
                 />
@@ -254,6 +270,11 @@ export default function UsersPage() {
         columns={columns}
         selectedOption={selectedOption}
         setDateRangeAndOption={setDateRangeAndOption}
+        searchConfig={{
+          placeholder: "Search by id",
+          updateQuery: setSearchQuery,
+          currentQuery: searchQuery ?? undefined,
+        }}
       />
       <DataTable
         columns={columns}
@@ -294,7 +315,7 @@ export default function UsersPage() {
                 }
         }
         pagination={{
-          pageCount: Math.ceil(Number(totalCount) / paginationState.pageSize),
+          totalCount,
           onChange: setPaginationState,
           state: paginationState,
         }}

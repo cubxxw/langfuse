@@ -75,7 +75,7 @@ export function MembershipInvitesPage({
         },
       );
 
-  const totalCount = invites.data?.totalCount ?? 0;
+  const totalCount = invites.data?.totalCount ?? null;
 
   const utils = api.useUtils();
 
@@ -201,11 +201,7 @@ export function MembershipInvitesPage({
     <>
       {/* Header included in order to hide it when there are not invites yet */}
       <Header title="Membership Invites" level="h3" />
-      <DataTableToolbar
-        columns={columns}
-        // columnVisibility={columnVisibility}
-        // setColumnVisibility={setColumnVisibility}
-      />
+      <DataTableToolbar columns={columns} />
       <DataTable
         columns={columns}
         data={
@@ -226,7 +222,7 @@ export function MembershipInvitesPage({
                 }
         }
         pagination={{
-          pageCount: Math.ceil(totalCount / paginationState.pageSize),
+          totalCount,
           onChange: setPaginationState,
           state: paginationState,
         }}

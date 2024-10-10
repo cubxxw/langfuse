@@ -1,3 +1,5 @@
+import { type ZodSchema } from "zod";
+
 import { ChatAnthropic } from "@langchain/anthropic";
 import {
   AIMessage,
@@ -12,20 +14,12 @@ import {
 import { IterableReadableStream } from "@langchain/core/utils/stream";
 import { ChatOpenAI } from "@langchain/openai";
 
-import {
-  ChatMessage,
-  ChatMessageRole,
-  LLMFunctionCall,
-  ModelParams,
-  LLMAdapter,
-} from "./types";
-import zodToJsonSchema from "zod-to-json-schema";
-import { JsonOutputFunctionsParser } from "langchain/output_parsers";
+import { ChatMessage, ChatMessageRole, ModelParams, LLMAdapter } from "./types";
 
 type LLMCompletionParams = {
   messages: ChatMessage[];
   modelParams: ModelParams;
-  functionCall?: LLMFunctionCall;
+  structuredOutputSchema?: ZodSchema;
   callbacks?: BaseCallbackHandler[];
   baseURL?: string;
   apiKey?: string;
@@ -51,7 +45,7 @@ export async function fetchLLMCompletion(
 export async function fetchLLMCompletion(
   params: LLMCompletionParams & {
     streaming: false;
-    functionCall: LLMFunctionCall;
+    structuredOutputSchema: ZodSchema;
   }
 ): Promise<unknown>;
 
@@ -121,18 +115,41 @@ export async function fetchLLMCompletion(
     throw new Error("This model provider is not supported.");
   }
 
-  if (params.functionCall) {
-    const functionCallingModel = chatModel.bind({
-      functions: [
-        {
-          ...params.functionCall,
-          parameters: zodToJsonSchema(params.functionCall.parameters),
-        },
-      ],
-      function_call: { name: params.functionCall.name },
-    });
-    const outputParser = new JsonOutputFunctionsParser();
-    return await functionCallingModel.pipe(outputParser).invoke(finalMessages);
+  if (params.structuredOutputSchema) {
+    return await (chatModel as ChatOpenAI) // Typecast necessary due to https://github.com/langchain-ai/langchainjs/issues/6795
+      .withStructuredOutput(params.structuredOutputSchema)
+      .invoke(finalMessages);
+  }
+
+  /*
+  Workaround OpenAI o1 while in beta:
+  
+  This is a temporary workaround to avoid sending system messages to OpenAI's O1 models.
+  O1 models do not support in beta:
+  - system messages
+  - top_p
+  - max_tokens at all, one has to use max_completion_tokens instead
+  - temperature different than 1
+
+  Reference: https://platform.openai.com/docs/guides/reasoning/beta-limitations
+  */
+  if (modelParams.model.startsWith("o1-")) {
+    return await new ChatOpenAI({
+      openAIApiKey: apiKey,
+      modelName: modelParams.model,
+      temperature: 1,
+      maxTokens: undefined,
+      topP: undefined,
+      callbacks,
+      maxRetries,
+      configuration: {
+        baseURL,
+      },
+    })
+      .pipe(new StringOutputParser())
+      .invoke(
+        finalMessages.filter((message) => message._getType() !== "system")
+      );
   }
 
   if (streaming) {

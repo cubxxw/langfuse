@@ -4,7 +4,7 @@ import z from "zod";
 export type PromptVariable = { name: string; value: string; isUsed: boolean };
 
 export type ChatMessage = {
-  role: ChatMessageRole;
+  role: ChatMessageRole | string; // Users may ingest any string as role via API/SDK
   content: string;
 };
 
@@ -21,6 +21,8 @@ export enum ChatMessageRole {
   User = "user",
   Assistant = "assistant",
 }
+
+export const ChatMessageDefaultRoleSchema = z.nativeEnum(ChatMessageRole);
 
 export type ModelParams = {
   provider: string;
@@ -52,6 +54,10 @@ export const openAIModels = [
   "gpt-4o-2024-05-13",
   "gpt-4o-mini",
   "gpt-4o-mini-2024-07-18",
+  "o1-preview",
+  "o1-preview-2024-09-12",
+  "o1-mini",
+  "o1-mini-2024-09-12",
   "gpt-4-turbo-preview",
   "gpt-4-1106-preview",
   "gpt-4-0613",

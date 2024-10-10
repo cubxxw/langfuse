@@ -62,9 +62,13 @@ export function DeletePromptVersion({
           variant="outline"
           type="button"
           size="icon"
+          className="h-7 w-7 px-0"
           disabled={!hasAccess}
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
         >
-          <Trash className="h-5 w-5" />
+          <Trash className="h-4 w-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent>

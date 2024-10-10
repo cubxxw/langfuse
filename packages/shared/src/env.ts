@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { removeEmptyEnvVariables } from "./utils/environment";
 
 const EnvSchema = z.object({
   NODE_ENV: z
@@ -16,6 +17,7 @@ const EnvSchema = z.object({
     .nullable(),
   REDIS_AUTH: z.string().nullish(),
   REDIS_CONNECTION_STRING: z.string().nullish(),
+  REDIS_ENABLE_AUTO_PIPELINING: z.enum(["true", "false"]).default("true"),
   ENCRYPTION_KEY: z
     .string()
     .length(
@@ -37,6 +39,11 @@ const EnvSchema = z.object({
     .number()
     .positive()
     .default(60 * 10),
+  SALT: z.string().optional(), // used by components imported by web package
+  LANGFUSE_LOG_LEVEL: z
+    .enum(["trace", "debug", "info", "warn", "error", "fatal"])
+    .optional(),
+  LANGFUSE_LOG_FORMAT: z.enum(["text", "json"]).default("text"),
 });
 
-export const env = EnvSchema.parse(process.env);
+export const env = EnvSchema.parse(removeEmptyEnvVariables(process.env));

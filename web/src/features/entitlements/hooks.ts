@@ -2,7 +2,7 @@ import {
   entitlementAccess,
   type Entitlement,
 } from "@/src/features/entitlements/constants/entitlements";
-import { type Plan } from "@/src/features/entitlements/constants/plans";
+import { type Plan } from "@langfuse/shared";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 
@@ -48,5 +48,9 @@ export const useOrgEntitlements = (): Entitlement[] => {
  */
 export const useHasOrgEntitlement = (entitlement: Entitlement): boolean => {
   const orgEntitlements = useOrgEntitlements();
+
+  const session = useSession();
+  if (session.data?.user?.admin) return true;
+
   return orgEntitlements.includes(entitlement);
 };

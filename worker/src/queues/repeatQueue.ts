@@ -1,4 +1,4 @@
-import { Queue, Worker } from "bullmq";
+import { Processor, Queue } from "bullmq";
 
 import { redis, QueueJobs, QueueName } from "@langfuse/shared/src/server";
 import { enqueueBatchExportJobs } from "../features/batchExport/enqueueBatchExportJobs";
@@ -16,20 +16,12 @@ if (repeatQueue) {
     {},
     {
       repeat: { pattern: "*/10 * * * *" },
-    }
+    },
   );
 }
 
-export const repeatQueueExecutor = redis
-  ? new Worker(
-      QueueName.RepeatQueue,
-      async (job) => {
-        if (job.name === QueueJobs.EnqueueBatchExportJobs) {
-          return enqueueBatchExportJobs();
-        }
-      },
-      {
-        connection: redis,
-      }
-    )
-  : null;
+export const repeatQueueProcessor: Processor = async (job) => {
+  if (job.name === QueueJobs.EnqueueBatchExportJobs) {
+    return enqueueBatchExportJobs();
+  }
+};

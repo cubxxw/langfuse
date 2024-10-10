@@ -10,7 +10,7 @@ import {
 } from "tiktoken";
 
 import { z } from "zod";
-import { instrument } from "@langfuse/shared/src/server";
+import { instrumentSync, logger } from "@langfuse/shared/src/server";
 
 const OpenAiTokenConfig = z.object({
   tokenizerModel: z.string().refine(isTiktokenModel, {
@@ -32,7 +32,7 @@ export function tokenCount(p: {
   model: Model;
   text: unknown;
 }): number | undefined {
-  return instrument(
+  return instrumentSync(
     {
       name: "token-count",
     },
@@ -54,7 +54,7 @@ export function tokenCount(p: {
         return claudeTokenCount(p.text);
       } else {
         if (p.model.tokenizerId) {
-          console.error(`Unknown tokenizer ${p.model.tokenizerId}`);
+          logger.error(`Unknown tokenizer ${p.model.tokenizerId}`);
         }
 
         return undefined;
@@ -72,7 +72,7 @@ type ChatMessage = {
 function openAiTokenCount(p: { model: Model; text: unknown }) {
   const config = OpenAiTokenConfig.safeParse(p.model.tokenizerConfig);
   if (!config.success) {
-    console.error(
+    logger.error(
       `Invalid tokenizer config for model ${p.model.id}: ${JSON.stringify(
         p.model.tokenizerConfig
       )}, ${JSON.stringify(config.error)}`
@@ -93,7 +93,7 @@ function openAiTokenCount(p: { model: Model; text: unknown }) {
       p.model.tokenizerConfig
     );
     if (!parsedConfig.success) {
-      console.error(
+      logger.error(
         `Invalid tokenizer config for chat model ${
           p.model.id
         }: ${JSON.stringify(p.model.tokenizerConfig)}`
@@ -161,7 +161,7 @@ function openAiChatTokenCount(params: {
 }
 
 const getTokensByModel = (model: TiktokenModel, text: string) => {
-  // encoiding should be kept in memory to avoid re-creating it
+  // encoding should be kept in memory to avoid re-creating it
   let encoding: Tiktoken | undefined;
   try {
     cachedTokenizerByModel[model] =
@@ -169,11 +169,14 @@ const getTokensByModel = (model: TiktokenModel, text: string) => {
 
     encoding = cachedTokenizerByModel[model];
   } catch (KeyError) {
-    console.log("Warning: model not found. Using cl100k_base encoding.");
+    logger.warn("Model not found. Using cl100k_base encoding.");
 
     encoding = get_encoding("cl100k_base");
   }
   const cleandedText = unicodeToBytesInString(text);
+
+  logger.info(`Tokenized data for model: ${model}`);
+
   return encoding?.encode(cleandedText).length;
 };
 
@@ -181,6 +184,12 @@ interface Tokenizer {
   [model: string]: Tiktoken;
 }
 const cachedTokenizerByModel: Tokenizer = {};
+
+export function freeAllTokenizers() {
+  Object.values(cachedTokenizerByModel).forEach((tokenizer) => {
+    tokenizer.free();
+  });
+}
 
 function isString(value: unknown): value is string {
   return typeof value === "string";

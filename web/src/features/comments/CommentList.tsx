@@ -11,6 +11,7 @@ import {
   FormItem,
   FormMessage,
 } from "@/src/components/ui/form";
+import { MarkdownView } from "@/src/components/ui/MarkdownViewer";
 import { Textarea } from "@/src/components/ui/textarea";
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import { api } from "@/src/utils/api";
@@ -22,6 +23,7 @@ import { ArrowUpToLine, LoaderCircle, Trash } from "lucide-react";
 import { useSession } from "next-auth/react";
 import React, { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
+import { BsMarkdown } from "react-icons/bs";
 import { type z } from "zod";
 
 export function CommentList({
@@ -132,8 +134,10 @@ export function CommentList({
       )}
       {hasWriteAccess && (
         <div className="mx-2 mb-2 mt-2 rounded-md border">
-          <div className="border-b px-3 py-1 text-xs font-medium">
-            New comment
+          <div className="flex flex-row border-b px-3 py-1 text-xs">
+            <div className="flex-1 font-medium">New comment</div>
+            <div className="text-muted-foreground"> supports markdown</div>
+            <BsMarkdown className="ml-2 h-4 w-4 text-muted-foreground" />
           </div>
           <Form {...form}>
             <form className="relative">
@@ -157,15 +161,16 @@ export function CommentList({
               <div className="flex justify-end">
                 <Button
                   type="submit"
-                  size="xs"
+                  size="icon-xs"
                   variant="outline"
+                  title="Submit comment"
                   loading={createCommentMutation.isLoading}
                   onClick={() => {
                     form.handleSubmit(onSubmit)();
                   }}
                   className="absolute bottom-2 right-2"
                 >
-                  <ArrowUpToLine className="h-4 w-4" />
+                  <ArrowUpToLine className="h-3 w-3" />
                 </Button>
               </div>
             </form>
@@ -191,17 +196,19 @@ export function CommentList({
               </AvatarFallback>
             </Avatar>
             <div className="relative rounded-md border">
-              <div className="flex h-8 flex-row items-center justify-between border-b px-3 py-1 text-xs font-medium">
-                <div>
+              <div className="flex h-8 flex-row items-center justify-between border-b px-3 py-1 text-xs">
+                <div className="font-medium">
                   {comment.authorUserName ?? comment.authorUserId ?? "User"}
                 </div>
                 <div className="flex flex-row items-center gap-2">
-                  <div>{comment.timestamp}</div>
+                  <div className="text-muted-foreground">
+                    {comment.timestamp}
+                  </div>
                   <div className="hidden min-h-6 justify-end group-hover:flex">
                     {session.data?.user?.id === comment.authorUserId && (
                       <Button
                         type="button"
-                        size="xs"
+                        size="icon-xs"
                         variant="destructive-secondary"
                         title="Delete comment"
                         loading={deleteCommentMutation.isLoading}
@@ -226,9 +233,10 @@ export function CommentList({
                   </div>
                 </div>
               </div>
-              <div className="mx-3 my-3 select-text whitespace-pre-wrap text-xs">
-                {comment.content}
-              </div>
+              <MarkdownView
+                markdown={comment.content}
+                className="select-text border-none text-xs"
+              />
             </div>
           </div>
         ))}
