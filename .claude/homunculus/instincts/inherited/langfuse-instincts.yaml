@@ -1,0 +1,356 @@
+# Instincts generated from https://github.com/cubxxw/langfuse
+# Generated: 2026-05-01T17:45:39.590Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: langfuse-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/cubxxw/langfuse
+---
+
+# Langfuse Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: fix
+
+## Evidence
+
+- 2 commits analyzed
+- Detected conventional commit pattern
+- Examples: fix(evals): do not drop langfuseObject on config on template upgrades (#13429), fix(evals): validate evaluator mapping target server-side (#13430)
+
+---
+id: langfuse-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/cubxxw/langfuse
+---
+
+# Langfuse Commit Length
+
+## Action
+
+Write moderate-length commit messages (~72 characters)
+
+## Evidence
+
+- Average commit message length: 72 chars
+- Based on 2 commits
+
+---
+id: langfuse-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/cubxxw/langfuse
+---
+
+# Langfuse Naming Files
+
+## Action
+
+Use kebab-case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: kebab-case
+
+---
+id: langfuse-import-alias
+trigger: "when importing modules"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/cubxxw/langfuse
+---
+
+# Langfuse Import Alias
+
+## Action
+
+Use path aliases (@/, ~/) instead of relative imports
+
+## Evidence
+
+- Import analysis shows alias pattern
+- Example: import { x } from '@/lib/x'
+
+---
+id: langfuse-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/cubxxw/langfuse
+---
+
+# Langfuse Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: langfuse-arch-feature-based
+trigger: "when adding a new feature"
+confidence: 0.85
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/cubxxw/langfuse
+---
+
+# Langfuse Arch Feature Based
+
+## Action
+
+Create a new folder in src/features/ with all related code colocated
+
+## Evidence
+
+- Feature-based module organization detected
+- Structure: src/features/[feature-name]/
+
+---
+id: langfuse-instinct-filename-kebab
+trigger: "When creating a new file"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Filename Kebab
+
+## Action
+
+Name the file using kebab-case
+
+## Evidence
+
+- Pattern in namingConventions.files: kebab-case
+
+---
+id: langfuse-instinct-function-camelcase
+trigger: "When defining a new function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Function Camelcase
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.functions: camelCase
+
+---
+id: langfuse-instinct-class-pascalcase
+trigger: "When creating a new class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Class Pascalcase
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.classes: PascalCase
+
+---
+id: langfuse-instinct-constant-screaming-snake
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Constant Screaming Snake
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in namingConventions.constants: SCREAMING_SNAKE_CASE
+
+---
+id: langfuse-instinct-import-alias
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Import Alias
+
+## Action
+
+Use import aliases
+
+## Evidence
+
+- Pattern in importStyle: alias
+
+---
+id: langfuse-instinct-export-named
+trigger: "When exporting modules or functions"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Export Named
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: langfuse-instinct-commit-conventional-fix
+trigger: "When writing a commit that fixes an issue"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Commit Conventional Fix
+
+## Action
+
+Use the conventional commit prefix 'fix' followed by the scope in parentheses and a colon
+
+## Evidence
+
+- Seen in commit: fix(evals): do not drop langfuseObject on config on template upgrades (#13429)
+- Seen in commit: fix(evals): validate evaluator mapping target server-side (#13430)
+
+---
+id: langfuse-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Commit Length
+
+## Action
+
+Keep the commit message concise, around 72 characters on average
+
+## Evidence
+
+- Pattern in commits.averageLength: 72
+
+---
+id: langfuse-instinct-try-catch-errors
+trigger: "When handling errors in code"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Try Catch Errors
+
+## Action
+
+Use try-catch blocks for error handling
+
+## Evidence
+
+- Pattern in errorHandling.style: try-catch
+
+---
+id: langfuse-instinct-custom-error-class
+trigger: "When defining new error types"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Custom Error Class
+
+## Action
+
+Implement custom error classes
+
+## Evidence
+
+- Pattern in errorHandling.customErrorClasses: true
+
+---
+id: langfuse-instinct-test-location-mixed
+trigger: "When adding new tests"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Test Location Mixed
+
+## Action
+
+Place tests in both source and dedicated test folders as appropriate (mixed location)
+
+## Evidence
+
+- Pattern in architecture.folderStructure.testLocation: mixed
+
+---
+id: langfuse-instinct-feature-modules
+trigger: "When organizing code modules"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: cubxxw/langfuse
+---
+
+# Langfuse Instinct Feature Modules
+
+## Action
+
+Group modules by feature
+
+## Evidence
+
+- Pattern in architecture.moduleOrganization: feature-based
+
